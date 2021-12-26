@@ -2,6 +2,7 @@ import os
 import sys
 import enum
 import random
+import time
 
 # Letter frequency
 _FREQ = [9, 2, 2, 4, 12,
@@ -9,7 +10,10 @@ _FREQ = [9, 2, 2, 4, 12,
          1, 4, 2, 6, 8,
          2, 1, 6, 4, 6,
          4, 2, 2, 1, 2, 1]
-_LETTER_SCORE = [13 - f for f in _FREQ] # TODO!!!
+# _LETTER_SCORE = [13 - f for f in _FREQ] # TODO!!!
+_LETTER_SCORE = [1, 3, 3,  2, 1, 4,  2, 4, 1,
+                 8, 5, 1,  3, 1, 1,  3, 10, 1,
+                 1, 1, 1,  4, 4, 8,  3, 10]
 print(_LETTER_SCORE)
 
 Multiplier = enum.Enum('Multiplier',
@@ -20,9 +24,19 @@ Multiplier = enum.Enum('Multiplier',
                                 'DOUBLE_WORD',
                                 'TRIPLE_WORD'])
 
+def choose_n(items, n, start=0):
+  for k in range(start, len(items) - (n - 1)):
+    if n > 1:
+      for other in choose_n(items, n - 1, k + 1):
+        yield tuple([k] + list(other))  # This is a bit inefficient
+    else:
+      yield (k,)
+
+
 # Board has tripple word every 7 (except for center)
 class Board:
     def __init__(self, dict_hash, num_players):
+        self.random = random.Random()
         board = []
         for i in range(0, 15):
             row = [Multiplier.NONE for i in range(0, 15)]
@@ -68,9 +82,13 @@ class Board:
     def init_players(self, num_players):
         self.players = [Player(self.draw_letters(7))
                         for _ in range(num_players)]
+    def __str__(self):
+        players = ['player[%d]: %s, score= %d' % (i, ''.join(player.letters), player.score)
+                   for i, player in enumerate(self.players)]
+        return '\n'.join(players) + '\n' + '\n'.join([''.join(row) for row in self.state])
 
     def print_board(self):
-        print('\n'.join([''.join(row) for row in self.state]))
+        print(str(self))
 
     def score_word(self, word):
         if not self.dict_hash.is_word(word):
@@ -81,17 +99,18 @@ class Board:
         return score
 
     def score_placed_word(self, i, j, direction, word):
-        if not self.dict_hash.is_word(word):
-            return -1, -1
-
+        # TODO: possible to place portion of a word on either end of existin words (
+        # as long as they are in the sam eline)
         # Check for valid positions first
         pos = [i, j]
+        num_unknown = 0
         for k in range(len(word)):
             if max(pos[0], pos[1]) >= 15:
-                return -1
+                return -1, -1
             s = self.state[pos[0]][pos[1]]
             if (s != ' ') and (s != word[k]):
                 return -1, -1
+            if s == ' ': num_unknown += 1
             pos[direction] += 1
 
         pos = [i, j]
@@ -100,14 +119,17 @@ class Board:
         word_mult = 1
 
         # Need to check for adding a prefix/suffix to an existing word
-        prefix = self.trace_word(pos[0], pos[1], direction, word[0])
-        prefix = prefix[:-1]
-
-        suffix = self.trace_word(end_pos[0], end_pos[1],
-                                 direction, word[-1])
-        suffix = suffix[1:]
-
-        if not self.dict_hash.is_word(prefix + word + suffix):
+        # TODO: this will not work if there is a single-world hole.
+        prefix = self.trace_word(pos[0], pos[1], direction, word[0], suffix=False)
+        suffix = self.trace_word(end_pos[0], end_pos[1], direction, word[-1], prefix=False)
+        if prefix:
+            prefix = prefix[:-1]
+        if suffix:
+            suffix = suffix[1:]
+        pre_word = prefix + word + suffix
+        #print('word, pre_word: %d, %d, [%s], [%s], %d' % (i, j, word, pre_word, direction))
+        if not self.dict_hash.is_word(pre_word):
+            # print('not a word')
             return -1, -1
 
         pre_score = self.score_word(prefix) + self.score_word(suffix)
@@ -115,14 +137,17 @@ class Board:
         for k in range(len(word)):
             letter = word[k]
             letter_score = _LETTER_SCORE[ord(letter) - ord('a')]
-            if self.board[pos[0]][pos[1]] == Multiplier.DOUBLE_LETTER:
-                letter_score *= 2
-            if self.board[pos[0]][pos[1]] == Multiplier.TRIPLE_LETTER:
-                letter_score *= 3
-            if self.board[pos[0]][pos[1]] == Multiplier.DOUBLE_WORD:
-                word_mult = 2
-            if self.board[pos[0]][pos[1]] == Multiplier.TRIPLE_WORD:
-                word_multi = 3
+
+            # Multipliers only apply to letters that are placed
+            if self.state[pos[0]][pos[1]] == ' ':
+                if self.board[pos[0]][pos[1]] == Multiplier.DOUBLE_LETTER:
+                    letter_score *= 2
+                if self.board[pos[0]][pos[1]] == Multiplier.TRIPLE_LETTER:
+                    letter_score *= 3
+                if self.board[pos[0]][pos[1]] == Multiplier.DOUBLE_WORD:
+                    word_mult = 2
+                if self.board[pos[0]][pos[1]] == Multiplier.TRIPLE_WORD:
+                    word_multi = 3
             score += letter_score
             pos[direction] += 1
         word_score = score * word_mult
@@ -135,8 +160,6 @@ class Board:
             if self.state[pos[0]][pos[1]] == ' ':
                 letters = self.trace_word(
                     pos[0], pos[1], 1 - direction, word[k])
-                #if len(letters):
-                #    print('letters: %s' % letters)
                 if len(letters) > 1:
                 #    print('Word:', letters)
                     if not self.dict_hash.is_word(letters):
@@ -145,26 +168,45 @@ class Board:
                     num_other_words += 1
             pos[direction] += 1
 
-        valid = (other_words_score + pre_score) > 0 and num_other_words <= 2
+        # TODO: num_other_words constraint is just a helper to keep results sane
+        num_known = len(word) - num_unknown
+        valid = (other_words_score + pre_score + num_known) > 0 and (num_other_words <= 2)
         return word_score + other_words_score, valid
 
-    def trace_word(self, i, j, direction, letter):
+    def place_word(self, i, j, dir, word):
         pos = [i, j]
-        if pos[direction] > 0:
-            pos[direction] -= 1
-        while pos[direction] >= 0 and self.state[pos[0]][pos[1]] != ' ':
-            pos[direction] -= 1
-        if (pos[direction] < 0) or (self.state[pos[0]][pos[1]] == ' '):
-            pos[direction] += 1
+        for letter in word:
+            self.state[pos[0]][pos[1]] = letter
+            pos[dir] += 1
+
+    def trace_word(self, i, j, direction, letter=None, prefix=True, suffix=True):
+        if (i < 0) or (j < 0) or (i >= 15) or (j >= 15): return ''
+        if not letter:
+            letter = self.state[i][j]
+
+        initial_pos = [i, j]
+        pos = [i, j]
+        if prefix:
+            if pos[direction] > 0:
+                pos[direction] -= 1
+            while pos[direction] >= 0 and self.state[pos[0]][pos[1]] != ' ':
+                pos[direction] -= 1
+            if pos[direction] < 0:
+                pos[direction] = 0
+            if pos[direction] != initial_pos[direction] and (self.state[pos[0]][pos[1]] == ' '):
+                pos[direction] += 1
         start = pos[direction]
 
         pos = [i, j]
-        if pos[direction] < 14:
-            pos[direction] += 1
-        while pos[direction] < 15 and self.state[pos[0]][pos[1]] != ' ':
-            pos[direction] += 1
-        if (pos[direction] >= 15) or (self.state[pos[0]][pos[1]] == ' '):
-            pos[direction] -= 1
+        if suffix:
+            if pos[direction] < 14:
+                pos[direction] += 1
+            while pos[direction] < 15 and self.state[pos[0]][pos[1]] != ' ':
+                pos[direction] += 1
+            if (pos[direction] >= 15):
+                pos[direction] = 14
+            if pos[direction] != initial_pos[direction] and (self.state[pos[0]][pos[1]] == ' '):
+                pos[direction] -= 1
         end = pos[direction]
 
         pos = [i, j]
@@ -176,18 +218,21 @@ class Board:
             else:
                 w.append(self.state[pos[0]][pos[1]])
             pos[direction] += 1
-        return ''.join(w)
+        return (''.join(w)).strip()
 
 
     def get_candidate_positions(self, letters):
-        words = self.dict_hash.find_all_words(letters)
         max_word = ''
         max_score = -1
         pos = []
         dir = 0
-
+        valid_options = []
+        print('num_played = %d' % self.num_played)
         if self.num_played == 0:
             col = 7
+            words = self.dict_hash.find_all_words(letters)
+            print('first_move')
+            print(words)
             for w in words:
                 for row in range(7 - len(w) + 1, 8):
                     score, _ = self.score_placed_word(row, col, dir, w)
@@ -197,62 +242,44 @@ class Board:
                         max_word = w
         else:
             # Try to use our own letters only
-            for w in words:
-                for row in range(0, 15):
-                    for col in range(0, 15 - len(w) + 1):
-                        score, valid = self.score_placed_word(row, col, 1, w)
-                        break
-                        if valid and (score > max_score):
-                            print(w, score, valid)
-                            max_score = score
-                            pos = [row, col]
-                            max_word = w
-                            dir = 1
-                for row in range(0, 15 - len(w) + 1):
-                    for col in range(0, 15):
-                        score, valid = self.score_placed_word(row, col, 0, w)
-                        break
-                        if valid and (score > max_score):
-                            print(w, score, valid)
-                            max_score = score
-                            pos = [row, col]
-                            max_word = w
-                            dir = 0
-
-            # Try to make words with existing letters
-            for d in range((self.num_played % 2), 2):
+            for d in range(0, 2):
                 for row in range(0, 15):
                     for col in range(0, 15):
-                        #print(row, col)
-                        subset = [' ' for i in range(0, 15)]
+                        subset = [' '] * (15 - (row if d == 0 else col))
                         p = [row, col]
-                        for n in range(0, 15):
+                        for n in range(0, len(subset)):
                             subset[n] = self.state[p[0]][p[1]]
                             p[d] += 1
-                            if p[d] >= 15:
-                                break
 
-                        for n in range(5, len(subset)):
+                        for n in range(2, len(subset)):
                             cons = subset[0:n]
                             extra_letters = []
                             for c in cons:
                                 if c != ' ':
                                     extra_letters.append(c)
                             if not extra_letters: continue
-                            words = self.dict_hash.find_all_words(letters + extra_letters,
-                                                                  len(cons), cons)
+                            t = time.time()
+                            stats = {'calls': 0, 'checked': 0}
+                            words = self.dict_hash.find_all_words_cons(letters, cons, stats)
+                            elapsed = time.time() - t
+                            if elapsed > 1:
+                                print(len(words), time.time() - t,
+                                      'letters = %s' % letters,
+                                      'extra = %s' % extra_letters,
+                                      'cons = %s' % cons, stats)
                             for w in words:
-                                score, _ = self.score_placed_word(row, col, d, w)
-                                print('new:', row, col, d, w, score, max_score, '[' + ''.join(cons) + ']')
-                                if score > max_score:
+                                score, valid = self.score_placed_word(row, col, d, w)
+                                #print('new:', row, col, d, w, score, max_score, '[' + ''.join(cons) + ']')
+                                if valid and score > 0:
+                                    valid_options.append((score, row, col, w))
+                                if score > max_score and valid:
                                     max_score = score
                                     pos = [row, col]
                                     max_word = w
                                     dir = d
-                                    print('new found')
 
-
-        print(max_score, max_word, pos)
+        valid_options.sort()
+        print(valid_options[-10:-1])
         return max_score, max_word, pos, dir
 
     def draw_letters(self, n):
@@ -262,23 +289,23 @@ class Board:
             num_letters += self.letters[i]
             all_letters += [chr(i + ord('a')) for _ in range(self.letters[i])]
 
-        random.shuffle(all_letters)
-        chosen = all_letters[0:n]
-        remaining = all_letters[n:]
+        self.random.shuffle(all_letters)
+        chosen, remaining = all_letters[0:n], all_letters[n:]
         self.letters = [0] * 26
         for l in remaining:
             self.letters[ord(l) - ord('a')] += 1
         return chosen
 
-
     def make_play(self):
         pi = self.num_played % len(self.players)
-        print(self.players[pi].letters)
+        letters = ''.join(self.players[pi].letters)
         max_score, max_word, pos, dir = self.get_candidate_positions(
             self.players[pi].letters)
-        print(max_score, max_word, pos, dir)
+        print('Letters:', letters)
+        print('Make play:', max_score, max_word, pos, dir)
         if max_score > 0:
             hist = {}
+            used_letters = 0
             for l in self.players[pi].letters:
                 if l not in hist:
                     hist[l] = 0
@@ -286,17 +313,18 @@ class Board:
             for k in range(len(max_word)):
                 if self.state[pos[0]][pos[1]] == ' ':
                     hist[max_word[k]] -= 1
+                    used_letters += 1
                     self.state[pos[0]][pos[1]] = max_word[k]
                 pos[dir] += 1
             letters = []
             for h in hist:
                 letters += [h] * hist[h]
             self.players[pi].letters = (letters +
-                                        self.draw_letters(len(max_word)))
+                                        self.draw_letters(used_letters))
             self.players[pi].score += max_score
-            print(self.players[pi].letters)
+
         self.num_played += 1
-        print([self.players[i].score for i in range(len(self.players))])
+        return max_score > 0
 
     def done(self):
         for p in self.players:
@@ -310,9 +338,30 @@ class Player:
         self.score = 0
 
 class DictHash:
-    def __init__(self, filename):
+    def __init__(self, filename, two_letters=None, three_letters=None):
         with open(filename, 'r') as f:
             words = [w.strip() for w in f.readlines()]
+
+        if two_letters:
+            with open(two_letters, 'r') as f:
+                two_letters = set([w.strip().lower() for w in f.readlines()])
+            stripped_words = []
+            for word in words:
+                if len(word) == 2 and (word not in two_letters):
+                    continue
+                stripped_words.append(word)
+            words = stripped_words
+
+        if three_letters:
+            with open(three_letters, 'r') as f:
+                three_letters = set([w.strip().lower() for w in f.readlines()])
+            stripped_words = []
+            for word in words:
+                if len(word) == 3 and (word not in three_letters):
+                    continue
+                stripped_words.append(word)
+            words = stripped_words
+
 
         self.words = words
         self.hash_to_index = {}
@@ -343,18 +392,48 @@ class DictHash:
         if h not in self.hash_to_index: return set()
         return set([self.words[i] for i in self.hash_to_index[h]])
 
-    def find_all_words(self, letters, target_length=-1, constraint=None):
+    def find_all_words_cons(self, letters, constraint, stats):
+        blanks = []
+        non_blanks = []
+        for i, letter in enumerate(constraint):
+            if letter == ' ':
+                blanks.append(i)
+            else:
+                non_blanks.append(letter)
+        constrained_words = set()
+        if len(blanks) == 0: return set()
+        if len(letters) >= len(blanks):
+            for sel in choose_n(letters, len(blanks)):
+                chosen_letters = non_blanks + [letters[k] for k in sel]
+                words = self.find_words(chosen_letters)
+                for word in words:
+                    satisfies = len(word) == len(constraint)
+                    stats['checked'] += 1
+                    if satisfies:
+                        for k in range(0, len(word)):
+                            if (constraint[k] != ' ') and (constraint[k] != word[k]):
+                                satisfies = False
+                                break
+                    if satisfies:
+                        constrained_words.add(word)
+        return constrained_words
+
+    def find_all_words(self, letters, target_length=-1, constraint=None, stats={}):
         if len(letters) == 0: return set()
+        if stats:
+            stats['calls'] += 1
         if (target_length == len(letters)) or target_length == -1:
             words = self.find_words(letters)
             if constraint:
                 constrained_words = set()
                 for word in words:
                     satisfies = len(word) == len(constraint)
-                    for k in range(0, len(word)):
-                        if (constraint[k] != ' ') and (constraint[k] != word[k]):
-                            satisfies = False
-                            break
+                    stats['checked'] += 1
+                    if satisfies:
+                        for k in range(0, len(word)):
+                            if (constraint[k] != ' ') and (constraint[k] != word[k]):
+                                satisfies = False
+                                break
                     if satisfies:
                         constrained_words.add(word)
                 words = constrained_words
@@ -364,7 +443,7 @@ class DictHash:
             for i in range(len(letters)):
                 words = words.union(
                     self.find_all_words(letters[0:i] + letters[(i+1):],
-                                        target_length, constraint))
+                                        target_length, constraint, stats))
         return words
 
     def order_by_length(self, words):
@@ -376,8 +455,34 @@ class DictHash:
         return by_length
 
 if __name__ == '__main__':
-    dict_hash = DictHash(sys.argv[1])
+    dict_hash = DictHash(sys.argv[1],
+                         sys.argv[2],
+                         sys.argv[3])
     board = Board(dict_hash, 2)
+    no_move = 0
     while not board.done():
-        board.make_play()
+        if board.make_play():
+            no_move = 0
+        else:
+            no_move += 1
+        if no_move == len(board.players):
+            break
         board.print_board()
+
+    board.print_board()
+    words = set()
+    for i in range(0, 14):
+        for j in range(0, 14):
+            if board.state[i][j] != ' ':
+                for dir in range(0, 2):
+                    w = board.trace_word(i, j, dir, board.state[i][j])
+                    if len(w) > 1:
+                        words.add(w)
+    print(words)
+    invalid_words = []
+    for word in words:
+        if not dict_hash.is_word(word):
+            invalid_words.append(word)
+    if invalid_words:
+        print('Invalid words')
+        print(invalid_words)
