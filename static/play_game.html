@@ -190,22 +190,6 @@
         };
     }
 
-    function create_mouse_over(i, j) {
-        return (x) => {
-            if (textInput.parent()) {
-                textInput.parent().html(textInput.val());
-                textInput.parent().remove(textInput);
-                textInput.val("");
-            }
-            var board = $("#board");
-            var newParent = $($(board.children()[i]).children()[j]);
-            textInput.val(newParent.html());
-            newParent.html("");
-            newParent.append(textInput);
-            console.log(`over ${i} ${j}`);
-        };
-    }
-
     function create_place_letter(textInput, i, j) {
         return (x) => {
             console.log(`${i} ${j} ${x}`);
@@ -229,7 +213,6 @@
                 var item = $("<div class='empty'></div>");
                 item.append(textInput);
                 textInput.change(create_place_letter(textInput, i, j));
-                //item.mouseenter(create_mouse_over(i, j));
                 row.append(item);
                 items.push(item);
             }
@@ -300,9 +283,6 @@
             this.ready = x.ready;
             this.currentPlayer = x.current_player;
             if ("board_state" in x) {
-                // TODO: update board state
-                console.log("board_state");
-                console.log(x.board_state);
                 this.setBoardState(x.board_state);
             }
             if ("logs" in x) {
@@ -329,8 +309,6 @@
             }),
             "dataType": "json",
         }).done((x) => {
-            console.log('joined game');
-            console.log(x);
             this.setLetters(x.letters);
             this.updateView();
         });
@@ -346,8 +324,6 @@
             }),
             "dataType": "json",
         }).done((x) => {
-            console.log('joined game');
-            console.log(x);
             var i = 0;
             this.candidatePositions = [];
             for (var i in x.positions) {
@@ -360,7 +336,7 @@
     Client.prototype.checkValid = function() {
         var valid = client.isCurrentMoveValid();
         if (!valid) {
-            console.log('Not valid');
+            console.log('Word is not valid');
             return;
         }
         $.ajax({
@@ -412,7 +388,8 @@
             }),
             "dataType": "json",
         }).done((x) => {
-            console.log('made move');
+            // TODO: check validity
+            console.log('Made move response');
             console.log(x);
             if ("letters" in x) {
                 this.setLetters(x.letters);
@@ -439,10 +416,7 @@
 
         for (var k in this.letters) {
             if (this.availableLetters[k].length > 0) continue;
-            console.log(`Letter: ${this.letters[k]} ${letter}`);
-            console.log
             if (this.letters[k] == letter) {
-                console.log("available");
                 this.availableLetters[k] = [i, j];
                 return true;
             }
@@ -500,7 +474,8 @@
                 this.board[i][j] = rows[i][j];
                 if (rows[i][j] != ' ') {
                     var boardItem = $(boardRow.children()[j]);
-                    const points = POINT_MAP[Math.min(Math.max(0, rows[i][j].charCodeAt(0) - 'a'.charCodeAt(0)), 26)];
+                    const points = POINT_MAP[
+                        Math.min(Math.max(0, rows[i][j].charCodeAt(0) - 'a'.charCodeAt(0)), 26)];
                     boardItem.html(rows[i][j] + `<div class='points'>${points}</div>`);
                     boardItem.addClass("placed");
                 }
