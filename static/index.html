@@ -1,0 +1,51 @@
+<head>
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+  <script>
+    var player_id = -1;
+    function create_game() {
+        console.log("Creating game");
+        const num_players = parseInt($("#num-players").val(), 10);
+        console.log(num_players);
+        $.post(
+            "http://localhost:8000/api/create_game",
+            JSON.stringify({
+                "num_players": num_players
+            }),
+            (x) => {
+                console.log("Created game:");
+                console.log(x);
+                $("#page-landing").hide()
+                $("#page-waiting").show()
+
+                var links = "";
+                var game_id = x["game_id"];
+                for (var i = 0; i < num_players; ++i) {
+                    var link = `http://localhost:8000/static/play_game.html?game_id=${game_id}&player_id=${i}`;
+                    links += `<li><a href=${link}>${link}<a></li>`;
+                }
+                $("#links").html("<ul>" + links + "</ul>");
+            },
+            "json");
+    }
+  </script>
+</head>
+<body>
+  <div id="page-landing">
+    <h1>Landing page</h1>
+    <span>Num players:
+      <select id="num-players">
+        <option value="2">2</option>
+        <option value="3">3</option>
+        <option value="4">4</option>
+      </select>
+    </span>
+    <button onclick="create_game();">Create new game</button>
+
+  </div>
+  <div id="page-waiting" style="display:none">
+    <h1>Waiting for others to join</h1>
+    Links for other players:
+    <div id="links">
+    </div>
+  </div>
+</body>

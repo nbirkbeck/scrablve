@@ -13,7 +13,7 @@ _FREQ = [9, 2, 2, 4, 12,
 # _LETTER_SCORE = [13 - f for f in _FREQ] # TODO!!!
 _LETTER_SCORE = [1, 3, 3,  2, 1, 4,  2, 4, 1,
                  8, 5, 1,  3, 1, 1,  3, 10, 1,
-                 1, 1, 1,  4, 4, 8,  3, 10]
+                 1, 1, 1,  4, 4, 8,  3, 10];
 print(_LETTER_SCORE)
 
 Multiplier = enum.Enum('Multiplier',
@@ -53,14 +53,14 @@ class Board:
             board[14 - i][i] = Multiplier.DOUBLE_WORD
 
         # Double letters
-        for coord in [(0,3), (3, 0), (2, 6), (6, 2), (3, 7), (7, 3)]:
+        for coord in [(0,3), (3, 0), (2, 6), (6, 2), (3, 7), (7, 3), (6, 6)]:
             board[coord[0]][coord[1]] = Multiplier.DOUBLE_LETTER
             board[coord[0]][14 - coord[1]] = Multiplier.DOUBLE_LETTER
             board[14 - coord[0]][coord[1]] = Multiplier.DOUBLE_LETTER
             board[14 - coord[0]][14 - coord[1]] = Multiplier.DOUBLE_LETTER
 
         # Triple letters
-        for coord in [(0,5), (5, 0), (5, 5)]:
+        for coord in [(1, 5), (5, 1), (5, 5)]:
             board[coord[0]][coord[1]] = Multiplier.TRIPLE_LETTER
             board[coord[0]][14 - coord[1]] = Multiplier.TRIPLE_LETTER
             board[14 - coord[0]][coord[1]] = Multiplier.TRIPLE_LETTER
@@ -93,7 +93,8 @@ class Board:
               max_i = pi
               max_val = len(word)
 
-        if pi != 0:
+        print('Max word: %d' % max_val)
+        if max_i != 0:
           self.players[0], self.players[pi] = self.players[pi], self.players[0]
         
     def __str__(self):
@@ -115,7 +116,8 @@ class Board:
             score += _LETTER_SCORE[ord(letter) - ord('a')]
         return score
 
-    def score_placed_word(self, i, j, direction, word):
+    def score_placed_word(self, i, j, direction, word, info=False):
+        details = []
         pos = [i, j]
         num_unknown = 0
         for k in range(len(word)):
@@ -123,7 +125,7 @@ class Board:
                 return -1, -1
             s = self.state[pos[0]][pos[1]]
             if (s != ' ') and (s != word[k]):
-                return -1, -1
+                return -1, -1, details
             if s == ' ': num_unknown += 1
             pos[direction] += 1
 
@@ -142,10 +144,12 @@ class Board:
         #print('word, pre_word: %d, %d, [%s], [%s], %d' % (i, j, word, pre_word, direction))
         if not self.dict_hash.is_word(pre_word):
             # print('not a word')
-            return -1, -1
+            return -1, -1, details
 
         pre_score = self.score_word(prefix) + self.score_word(suffix)
         score = pre_score
+        if info and pre_score:
+            details.append('Prefix=%s, suffix=%s, score=%d.' % (prefix, suffix, pre_score))
         for k in range(len(word)):
             letter = word[k]
             letter_score = _LETTER_SCORE[ord(letter) - ord('a')]
@@ -153,16 +157,21 @@ class Board:
             # Multipliers only apply to letters that are placed
             if self.state[pos[0]][pos[1]] == ' ':
                 if self.board[pos[0]][pos[1]] == Multiplier.DOUBLE_LETTER:
+                    if info: details.append('Double letter on %s (score = 2 * %d).' % (letter, letter_score))
                     letter_score *= 2
                 if self.board[pos[0]][pos[1]] == Multiplier.TRIPLE_LETTER:
+                    if info: details.append('Triple letter on %s (score = 3 * %d).' % (letter, letter_score))
                     letter_score *= 3
                 if self.board[pos[0]][pos[1]] == Multiplier.DOUBLE_WORD:
+                    if info: details.append('Double word on %s.' % (letter))
                     word_mult = 2
                 if self.board[pos[0]][pos[1]] == Multiplier.TRIPLE_WORD:
-                    word_multi = 3
+                    if info: details.append('Triple word on %s.' % (letter))
+                    word_mult = 3
             score += letter_score
             pos[direction] += 1
         word_score = score * word_mult
+        if info: details.append('Word=%s (score = %d)' % (pre_word, word_score))
 
         # Need to check that we add onto an existing letter
         other_words_score = 0
@@ -175,18 +184,23 @@ class Board:
                 if len(letters) > 1:
                 #    print('Word:', letters)
                     if not self.dict_hash.is_word(letters):
-                        return -1, -1
-                    other_words_score += self.score_word(letters)
+                        return -1, -1, details
+                    other_word_score = self.score_word(letters)
+                    if info: details.append('Other word = %s, score = %d' % (letters, other_word_score))
+                    other_words_score += other_word_score 
                     num_other_words += 1
             pos[direction] += 1
 
         # TODO: num_other_words constraint is just a helper to keep results reasonable
         num_known = len(word) - num_unknown
         if self.num_played == 0:
+          pos = [i, j]
           valid = (pos[1 - direction] == 7) and (end_pos[direction] >= 7) and (pos[direction] <= 7)
         else:
           valid = (other_words_score + pre_score + num_known) > 0 and (num_other_words <= 2)
-        return word_score + other_words_score, valid
+        total_score = word_score + other_words_score
+        if info: details.append('Total score = %d' % total_score)
+        return word_score + other_words_score, valid, details
 
     def place_word(self, i, j, dir, word):
         pos = [i, j]
@@ -236,25 +250,19 @@ class Board:
         return (''.join(w)).strip()
 
 
-    def get_candidate_positions(self, letters):
+    def get_candidate_positions(self, letters, max_num=1):
         max_word = ''
-        max_score = -1
-        pos = []
-        dir = 0
         valid_options = []
-        print('num_played = %d' % self.num_played)
         if self.num_played == 0:
             col = 7
+            d = 1
             words = self.dict_hash.find_all_words(letters)
-            print('first_move')
-            print(words)
             for w in words:
                 for row in range(7 - len(w) + 1, 8):
-                    score, _ = self.score_placed_word(row, col, dir, w)
-                    if score > max_score:
-                        max_score = score
-                        pos = [row, col]
-                        max_word = w
+                    score, valid, __ = self.score_placed_word(row, col, d, w)
+                    if valid and score > 0:
+                      valid_options.append((score, row, col, d, w))
+            print(valid_options)
         else:
             # Try to use our own letters only
             for d in range(0, 2):
@@ -283,19 +291,13 @@ class Board:
                                       'extra = %s' % extra_letters,
                                       'cons = %s' % cons, stats)
                             for w in words:
-                                score, valid = self.score_placed_word(row, col, d, w)
+                                score, valid, _ = self.score_placed_word(row, col, d, w)
                                 #print('new:', row, col, d, w, score, max_score, '[' + ''.join(cons) + ']')
                                 if valid and score > 0:
-                                    valid_options.append((score, row, col, w))
-                                if score > max_score and valid:
-                                    max_score = score
-                                    pos = [row, col]
-                                    max_word = w
-                                    dir = d
+                                    valid_options.append((score, row, col, d, w))
 
         valid_options.sort()
-        print(valid_options[-10:-1])
-        return max_score, max_word, pos, dir
+        return valid_options[-max_num:]
 
     def draw_letters(self, n):
         num_letters = 0
