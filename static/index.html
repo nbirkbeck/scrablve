@@ -5,11 +5,13 @@
     function create_game() {
         console.log("Creating game");
         const num_players = parseInt($("#num-players").val(), 10);
+        const seed = parseInt($("#seed").val(), 10);
         console.log(num_players);
         $.post(
             "/api/create_game",
             JSON.stringify({
-                "num_players": num_players
+                "num_players": num_players,
+                "seed": seed,
             }),
             (x) => {
                 console.log("Created game:");
@@ -39,6 +41,10 @@
         <option value="4">4</option>
       </select>
     </span>
+    <div>
+      Seed: <input id="seed" value=0></input>
+    </div>
+
     <button onclick="create_game();">Create new game</button>
 
   </div>

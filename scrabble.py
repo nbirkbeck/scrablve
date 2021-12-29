@@ -35,8 +35,11 @@ def choose_n(items, n, start=0):
 
 # Board has tripple word every 7 (except for center)
 class Board:
-    def __init__(self, dict_hash, num_players):
+    def __init__(self, dict_hash, num_players, seed=0):
         self.random = random.Random()
+        if seed:
+          self.random.seed(seed)
+        
         board = []
         for i in range(0, 15):
             row = [Multiplier.NONE for i in range(0, 15)]
@@ -484,7 +487,7 @@ if __name__ == '__main__':
     dict_hash = DictHash(sys.argv[1],
                          sys.argv[2],
                          sys.argv[3])
-    board = Board(dict_hash, 2)
+    board = Board(dict_hash, 2, sys.argv[4] if len(sys.argv) > 4 else 0)
     no_move = 0
     while not board.done():
         if board.make_auto_play():

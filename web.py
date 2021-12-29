@@ -29,12 +29,12 @@ class Status:
 dict_hash = scrabble.DictHash("words.txt", "words.2.txt", "words.3.txt")
 
 class Game(object):
-    def __init__(self, game_id, num_players):
+    def __init__(self, game_id, num_players, seed=0):
         self.game_id = game_id
         self.num_players = num_players
         self.last_seen = [0] * num_players
         self.current_player = 0
-        self.board = scrabble.Board(dict_hash, num_players)
+        self.board = scrabble.Board(dict_hash, num_players, seed)
         self.log = []
 
     def update_status(self, player_id):
@@ -101,8 +101,12 @@ class GameHandler(SimpleHTTPRequestHandler):
         if (num_players > 4) or (num_players <= 1):
             return {"status": Status.INVALID_ARGUMENT}
 
+        seed = 0
+        if "seed" in request:
+            seed = int(request["seed"])
+        
         game_id = len(games)
-        games[game_id] = Game(game_id, num_players)
+        games[game_id] = Game(game_id, num_players, seed)
         return {
             "status": Status.OK,
             "game_id": game_id,
