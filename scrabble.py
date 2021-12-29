@@ -337,13 +337,18 @@ class Board:
     def make_auto_play(self):
         pi = self.num_played % len(self.players)
         letters = ''.join(self.players[pi].letters)
-        max_score, max_word, pos, dir = self.get_candidate_positions(
-            self.players[pi].letters)
-        print('Letters:', letters)
-        print('Make play:', max_score, max_word, pos, dir)
-        if max_score > 0:
-            self.make_play(pi, pos, dir, max_word, max_score)
-        return max_score > 0
+        candidates = self.get_candidate_positions(
+            self.players[pi].letters, 1)
+        if len(candidates) >= 1 :
+            c = candidates[0]
+            max_score, row, col, dir, max_word = c[0], c[1], c[2], c[3], c[4]
+            pos = [row, col]
+            print('Letters:', letters)
+            print('Make play:', max_score, max_word, pos, dir)
+            if max_score > 0:
+                self.make_play(pi, pos, dir, max_word, max_score)
+            return max_score > 0
+        return False
 
     def done(self):
         for p in self.players:

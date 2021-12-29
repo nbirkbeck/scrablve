@@ -257,11 +257,11 @@
 
     function updateValidScore(valid, score, details) {
         if (valid) {
-            var details = "";
+            var detailsHtml = "";
             for (var i in details) {
-                details += "&nbsp;&nbsp;" + details[i] + "<br>";
+                detailsHtml += "&nbsp;&nbsp;" + details[i] + "<br>";
             }
-            $("#current-move-score").html(`Current move score: ${score}<br>Details:<br>${details}`);
+            $("#current-move-score").html(`Current move score: ${score}<br>Details:<br>${detailsHtml}`);
             
         } else {
             $("#current-move-score").html(`Current move is invalid`);

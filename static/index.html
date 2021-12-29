@@ -7,7 +7,7 @@
         const num_players = parseInt($("#num-players").val(), 10);
         console.log(num_players);
         $.post(
-            "http://localhost:8000/api/create_game",
+            "/api/create_game",
             JSON.stringify({
                 "num_players": num_players
             }),
@@ -20,7 +20,7 @@
                 var links = "";
                 var game_id = x["game_id"];
                 for (var i = 0; i < num_players; ++i) {
-                    var link = `http://localhost:8000/static/play_game.html?game_id=${game_id}&player_id=${i}`;
+                    var link = `/static/play_game.html?game_id=${game_id}&player_id=${i}`;
                     links += `<li><a href=${link}>${link}<a></li>`;
                 }
                 $("#links").html("<ul>" + links + "</ul>");

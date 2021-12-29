@@ -59,7 +59,6 @@ def restore_games():
     return {}
 
 
-
 def ctrl_c_handler(sig, frame):
     print('Ctrl+C pressed! Saving games...')
     save_games()
@@ -89,7 +88,7 @@ def get_player_id(request, game):
     return request["player_id"], None
 
 
-class MyHandler(SimpleHTTPRequestHandler):
+class GameHandler(SimpleHTTPRequestHandler):
     def redirect(self, url):
         self.send_response(302)
         self.send_header('Location', url)
@@ -220,7 +219,6 @@ class MyHandler(SimpleHTTPRequestHandler):
             "status": status,
             "positions": positions,
         }
-
     
     def do_POST(self):
         if self.path.startswith('/api'):
@@ -259,6 +257,9 @@ class MyHandler(SimpleHTTPRequestHandler):
 if __name__ == '__main__':
     signal.signal(signal.SIGINT, ctrl_c_handler)
     games = restore_games()
-    
-    httpd = HTTPServer(('192.168.1.16', 8000), MyHandler)
+
+    address = 'localhost'
+    if len(sys.argv) > 1:
+        address = '192.168.1.16'
+    httpd = HTTPServer((address, 8000), GameHandler)
     httpd.serve_forever()
