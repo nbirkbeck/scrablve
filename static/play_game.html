@@ -1,5 +1,6 @@
 <head>
   <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+  <script src="client.js"></script>
   <style>
     #left-panel {
         float: left;
@@ -169,7 +170,7 @@
         1, 1, 1,  4, 4, 8,  3, 10
     ];
     
-    function load_args() {
+    function loadArgs() {
         var url_params = window.location.href.split("?")[1].split("&");
         var args = {};
         for (var i = 0; i < url_params.length; ++i) {
@@ -190,20 +191,17 @@
         };
     }
 
-    function create_place_letter(textInput, i, j) {
+    function createPlaceLetter(textInput, i, j) {
         return (x) => {
-            console.log(`${i} ${j} ${x}`);
-            console.log(x);
             if (!client.placeLetter(i, j, textInput.val())) {
                 console.log("cant place");
                 textInput.val("");
             }
-            client.checkValid();
-            client.updateView();
+            client.checkValid(updateValidScore);
         };
     }
 
-    function create_board() {
+    function createBoard() {
         var board = $("#board");
         var items = [];
         for (var i = 0; i < 15; ++i) {
@@ -212,7 +210,7 @@
                 var textInput = $("<input maxlength=1></input>");
                 var item = $("<div class='empty'></div>");
                 item.append(textInput);
-                textInput.change(create_place_letter(textInput, i, j));
+                textInput.change(createPlaceLetter(textInput, i, j));
                 row.append(item);
                 items.push(item);
             }
@@ -248,290 +246,63 @@
         ));
     }
 
-    var Client = function(gameId, playerId) {
-        this.gameId = gameId;
-        this.playerId = playerId;
-        this.url = "";
-        this.letters = [];
-        this.availableLetters = [];
-        this.ready = false;
-        this.currentPlayer = -1;
-        this.numPlayed = 0;
-        this.board = [];
-        this.candidatePositions = [];
-        for (var i = 0; i < 15; i++) {
-            var row = [];
-            for (var j = 0; j < 15; ++j) {
-                row.push(' ');
+    var Events = {
+        BOARD_CHANGED: "board_changed",
+        CANDIDATES_CHANGED: "candidate_changed",
+        LETTERS_CHANGED: "letters_changed",
+        LETTER_PLACED: "letter_placed",
+        LOGS_CHANGED: "logs_changed",
+        STATUS: "status",
+    };
+
+    function updateValidScore(valid, score, details) {
+        if (valid) {
+            var details = "";
+            for (var i in details) {
+                details += "&nbsp;&nbsp;" + details[i] + "<br>";
             }
-            this.board.push(row);
+            $("#current-move-score").html(`Current move score: ${score}<br>Details:<br>${details}`);
+            
+        } else {
+            $("#current-move-score").html(`Current move is invalid`);
         }
-        this.logs = []
-    };
+    }
 
-    Client.prototype.sendStatus = function() {
-        $.ajax({
-            "type": "POST",
-            "url": `${this.url}/api/send_status`,
-            "data": JSON.stringify({
-                "game_id": this.gameId,
-                "player_id": this.playerId,
-                "num_played": this.numPlayed,
-            }),
-            "dataType": "json",
-        }).done((x) => {
-            this.ready = x.ready;
-            this.currentPlayer = x.current_player;
-            if ("board_state" in x) {
-                this.setBoardState(x.board_state);
-            }
-            if ("logs" in x) {
-                for (var i in x.logs) {
-                    this.logs.push(x.logs[i]);
-                }
-            }
-            this.scores = x.scores;
-            if ("num_played" in x) {
-                this.numPlayed = x.num_played;
-                console.log(this.numPlayed);
-            }
-            this.updateView();
-        });
-    };
-
-    Client.prototype.joinGame = function() {
-        $.ajax({
-            "type": "POST",
-            "url": `${this.url}/api/join_game`,
-            "data": JSON.stringify({
-                "game_id": this.gameId,
-                "player_id": this.playerId,
-            }),
-            "dataType": "json",
-        }).done((x) => {
-            this.setLetters(x.letters);
-            this.updateView();
-        });
-    };
-
-    Client.prototype.getCandidatePositions = function() {
-        $.ajax({
-            "type": "POST",
-            "url": `${this.url}/api/get_candidate_positions`,
-            "data": JSON.stringify({
-                "game_id": this.gameId,
-                "player_id": this.playerId,
-            }),
-            "dataType": "json",
-        }).done((x) => {
-            var i = 0;
-            this.candidatePositions = [];
-            for (var i in x.positions) {
-                this.candidatePositions.push(x.positions[i]);
-            }
-            this.updateBestPanel();
-        });
-    };
-
-    Client.prototype.checkValid = function() {
-        var valid = client.isCurrentMoveValid();
-        if (!valid) {
-            console.log('Word is not valid');
-            return;
-        }
-        $.ajax({
-            "type": "POST",
-            "url": `${this.url}/api/score_placed_word`,
-            "data": JSON.stringify({
-                "game_id": this.gameId,
-                "move": {
-                    "i": valid[0][0],
-                    "j": valid[0][1],
-                    "direction": valid[1],
-                    "word": valid[2],
-                }
-            }),
-            "dataType": "json",
-        }).done((x) => {
-            if (x.status == "OK") {
-                var details = "";
-                for (var i in x.details) {
-                    details += "&nbsp;&nbsp;" + x.details[i] + "<br>";
-                }
-                $("#current-move-score").html(`Current move score: ${x.score}<br>Details:<br>${details}`);
-                
-            } else {
-                $("#current-move-score").html(`Current move is invalid`);
-            }
-        });
-
-    };
-
-    Client.prototype.makePlay = function() {
-        var valid = client.isCurrentMoveValid();
-        if (!valid) {
-            console.log('Not valid');
-            return;
-        }
-        $.ajax({
-            "type": "POST",
-            "url": `${this.url}/api/move`,
-            "data": JSON.stringify({
-                "game_id": this.gameId,
-                "player_id": this.playerId,
-                "move": {
-                    "i": valid[0][0],
-                    "j": valid[0][1],
-                    "direction": valid[1],
-                    "word": valid[2],
-                }
-            }),
-            "dataType": "json",
-        }).done((x) => {
-            // TODO: check validity
-            console.log('Made move response');
-            console.log(x);
-            if ("letters" in x) {
-                this.setLetters(x.letters);
-            }
-            this.scores = x.scores;
-            if ("board_state" in x) {
-                this.setBoardState(x.board_state);
-            }
-            this.updateView();
-            this.sendStatus();
-        });
-    };
-
-    Client.prototype.placeLetter = function(i, j, letter) {
-        console.log('place letter:', i, j, letter);
-        for (var k in this.letters) {
-            if (this.availableLetters[k].length > 0 &&
-                this.availableLetters[k][0] == i &&
-                this.availableLetters[k][1] == j) {
-                this.availableLetters[k] = [];
-                break;
-            }
-        }
-
-        for (var k in this.letters) {
-            if (this.availableLetters[k].length > 0) continue;
-            if (this.letters[k] == letter) {
-                this.availableLetters[k] = [i, j];
-                return true;
-            }
-        }
-        return false;
-    };
-
-    Client.prototype.isCurrentMoveValid = function() {
-        var minPos = [15, 15];
-        var maxPos = [0, 0];
-        var placed = {};
-        for (var i in this.letters) {
-            if (this.availableLetters[i].length > 0) {
-                var pos = this.availableLetters[i];
-                minPos[0] = Math.min(minPos[0], pos[0]);
-                minPos[1] = Math.min(minPos[1], pos[1]);
-                maxPos[0] = Math.max(maxPos[0], pos[0]);
-                maxPos[1] = Math.max(maxPos[1], pos[1]);
-                if (!placed.hasOwnProperty(pos[0])) {
-                    placed[pos[0]] = {};
-                }
-                placed[pos[0]][pos[1]] = this.letters[i];
-            }
-        }
-        var size = [
-            maxPos[0] - minPos[0],
-            maxPos[1] - minPos[1]
-        ];
-        if (!(size[0] == 0 || size[1] == 0)) return null;
-
-        if (size[0] > 0) dir = 0;
-        else dir = 1;
-        var pos = [minPos[0], minPos[1]];
-        var word = '';
-        while (pos[dir] <= maxPos[dir]) {
-            if (placed.hasOwnProperty(pos[0]) &&
-                placed[pos[0]].hasOwnProperty(pos[1])) {
-                word += placed[pos[0]][pos[1]];
-            } else {
-                word += this.board[pos[0]][pos[1]];
-            }
-            pos[dir] += 1;
-        }
-        if (word.indexOf(' ') >= 0) return null;
-
-        return [minPos, dir, word];
-    };
-
-    Client.prototype.setBoardState = function(state) {
-        var rows = state.split('\n');
+    function onLetterPlaced(event) {
         var board = $("#board");
-        for (var i in rows) {
-            var boardRow = $(board.children()[i]);
-            for (var j = 0; j < 15; ++j) {
-                this.board[i][j] = rows[i][j];
-                if (rows[i][j] != ' ') {
-                    var boardItem = $(boardRow.children()[j]);
-                    const points = POINT_MAP[
-                        Math.min(Math.max(0, rows[i][j].charCodeAt(0) - 'a'.charCodeAt(0)), 26)];
-                    boardItem.html(rows[i][j] + `<div class='points'>${points}</div>`);
-                    boardItem.addClass("placed");
-                }
-            }
+        var i = event.detail.i;
+        var j = event.detail.j;
+        var letter = event.detail.letter;
+        var item = $($(board.children()[i]).children()[j]);
+        var input = $(item.children("input"));
+        if (input.val() != letter) {
+          input.val(letter)
         }
-        console.log('board state');
-        console.log(state);
-    };
+    }
 
-    Client.prototype.setLetters = function(letters) {
-        this.availableLetters = [];
-        for (var i in letters) {
-            this.availableLetters.push([]);
-        }
-        this.letters = letters.map((x) => x[0]);
-        this.candidatePositions = [];
-        
-        this.updateView();
-        this.updateBestPanel();
-    };
+    function showCandidate(i) {
+        console.log("Candidate:", i);
+        client.placeCandidate(i);
+        client.checkValid(updateValidScore);
+    }
 
-    Client.prototype.updateView = function() {
+    function onLettersChanged(event) {
         $("#letters").html("");
-        for (var i in this.letters) {
-            const points = POINT_MAP[Math.min(Math.max(0, this.letters[i].charCodeAt(0) - 'a'.charCodeAt(0)), 26)];
-            var letter = $(`<div>${this.letters[i]}<div class='points'>${points}</div></div>`);
+        var letters = event.detail.letters;
+        var availableLetters = event.detail.availableLetters;
+        for (var i in letters) {
+            const points = POINT_MAP[Math.min(Math.max(0, letters[i].charCodeAt(0) - 'a'.charCodeAt(0)), 26)];
+            var letter = $(`<div>${letters[i]}<div class='points'>${points}</div></div>`);
             letter.addClass("item");
             letter.addClass("placed");
-            if (this.availableLetters[i].length > 0) {
+            if (availableLetters[i].length > 0) {
                 letter.addClass("not-available")
             } else {
                 letter.addClass("available")
             }
             $("#letters").append(letter);
         }
-
-        $("#status").html(this.ready ? "Ready" : "Waiting");
-        var scores = "";
-        for (var i in this.scores) {
-            scores += `<br>&nbsp;&nbsp; Player${i}: ${this.scores[i]}`;
-        }
-        $("#scores").html(scores);
-        if (this.currentPlayer >= 0) {
-            $("#whose-turn").html(`Other Player (#${this.currentPlayer})`);
-            if (this.currentPlayer == this.playerId) {
-                $("#whose-turn").html(`<b>Your turn!</b>`);
-            }
-        }
-        if (this.currentPlayer == this.playerId) {
-            $("#send-button").show();
-            $("input").prop("disabled", false);
-        } else {
-            $("#send-button").hide();
-            $("input").prop("disabled", true);
-        }
-
+        
         $("input").each((index, x) => {
             x = $(x);
             if (x.val() != "") x.addClass("placed");
@@ -544,18 +315,12 @@
         } else {
             $("#move-status").html("");
         }
+    }
 
-        $("#log-panel").empty();
-        for (var i in this.logs) {
-            $("#log-panel").append(this.logs[i] + "<br>");
-        }
-
-    };
-
-    Client.prototype.updateBestPanel = function() {
+    function onBestChanged(event) {
         var bestPanel = "";
-        for (var i in this.candidatePositions) {
-            var p = this.candidatePositions[i];
+        for (var i in event.detail.candidates) {
+            var p = event.detail.candidates[i];
             bestPanel += `<option value=${i}>${p[0]}@(${p[1]}, ${p[2]}, ${p[3]}) word=${p[4]}</option>`;
         }
         if (bestPanel) {
@@ -565,49 +330,72 @@
         }
     };
 
-    Client.prototype.showCandidate = function(i) {
-        console.log("Candidate:", i);
+    function onBoardChanged(event) {
+        var rows = event.detail.board;
         var board = $("#board");
-        var cand = this.candidatePositions[i];
-        
-        for (var k in this.letters) {
-            if (this.availableLetters[k].length > 0) {
-                var i = this.availableLetters[k][0];
-                var j = this.availableLetters[k][1];
-                var item = $($(board.children()[i]).children()[j]);
-                $(item.children("input")).val("");
-                this.availableLetters[k] = [];
+        for (var i in rows) {
+            var boardRow = $(board.children()[i]);
+            for (var j = 0; j < 15; ++j) {
+                if (rows[i][j] != ' ') {
+                    var boardItem = $(boardRow.children()[j]);
+                    const points = POINT_MAP[
+                        Math.min(Math.max(0, rows[i][j].charCodeAt(0) - 'a'.charCodeAt(0)), 26)];
+                    boardItem.html(rows[i][j] + `<div class='points'>${points}</div>`);
+                    boardItem.addClass("placed");
+                }
             }
         }
-        
+    }
 
-        var pos = [cand[1], cand[2]];
-        var dir = cand[3];
-        var word = cand[4];
-        for (var k in word) {
-            if (this.board[pos[0]][pos[1]] == ' ') {
-                this.placeLetter(pos[0], pos[1], word[k]);
-
-                var item = $($(board.children()[pos[0]]).children()[pos[1]]);
-                $(item.children()[0]).val(word[k]);
-            }
-            pos[dir]++;
+    function onLogsChanged(event) {
+        $("#log-panel").empty();
+        for (var i in this.logs) {
+            $("#log-panel").append(event.detail.logs[i] + "<br>");
         }
-        this.updateView();
-        this.checkValid();
-    };
+    }
+
+    function onStatus(event) {
+        var target = event.target;
+        $("#status").html(target.ready ? "Ready" : "Waiting");
+        var scores = "";
+        for (var i in target.scores) {
+            scores += `<br>&nbsp;&nbsp; Player${i}: ${target.scores[i]}`;
+        }
+        $("#scores").html(scores);
+        
+        if (target.currentPlayer >= 0) {
+            $("#whose-turn").html(`Other Player (#${target.currentPlayer})`);
+            if (target.currentPlayer == target.playerId) {
+                $("#whose-turn").html(`<b>Your turn!</b>`);
+            }
+        }
+        if (target.currentPlayer == target.playerId) {
+            $("#send-button").show();
+            $("input").prop("disabled", false);
+        } else {
+            $("#send-button").hide();
+            $("input").prop("disabled", true);
+        }
+    }
 
     function setup() {
-        var args = load_args();
-        create_board();
+        var args = loadArgs();
+        createBoard();
 
         client = new Client(args.gameId, args.playerId);
         client.joinGame();
         client.sendStatus();
+        client.addEventListener(Events.CANDIDATES_CHANGED, onBestChanged);
+        client.addEventListener(Events.LETTERS_CHANGED, onLettersChanged);
+        client.addEventListener(Events.LETTER_PLACED, onLetterPlaced);
+        client.addEventListener(Events.BOARD_CHANGED, onBoardChanged);
+        client.addEventListener(Events.LOGS_CHANGED, onLogsChanged);
+        client.addEventListener(Events.STATUS, onStatus);
 
         $("#send-button").click((x) => (client.makePlay()));
         $("#show-best").click((x) => (client.getCandidatePositions()));
-        $("#best-panel").change((x) => (client.showCandidate(parseInt($(x.target).val()))));
+        $("#best-panel").change((x) => (showCandidate(parseInt($(x.target).val()))));
+
         setInterval(() => (client.sendStatus()), 2500);
 
         if (args.auto) {
@@ -617,7 +405,7 @@
                     if (!client.candidatePositions.length) {
                         client.getCandidatePositions();
                     } else {
-                        client.showCandidate(client.candidatePositions.length - 1);
+                        showCandidate(client.candidatePositions.length - 1);
                         setTimeout(() => client.makePlay(), 1500);
 
                     }
@@ -628,8 +416,5 @@
 
     $(document).ready(setup);
 
-    $(board).motion((x) => {
-        console.log(x);
-    });
   </script>
 </body>
