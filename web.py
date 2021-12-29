@@ -6,7 +6,7 @@ import signal
 import pickle
 import sys
 import time
-import scrabble
+import scrablve
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 
 API_HANDLERS = {
@@ -26,7 +26,7 @@ class Status:
     UNKOWN_PLAYER = 'UNKOWN_PLAYER'
 
 
-dict_hash = scrabble.DictHash("words.txt", "words.2.txt", "words.3.txt")
+dict_hash = scrablve.DictHash("words.txt", "words.2.txt", "words.3.txt")
 
 class Game(object):
     def __init__(self, game_id, num_players, seed=0):
@@ -34,7 +34,7 @@ class Game(object):
         self.num_players = num_players
         self.last_seen = [0] * num_players
         self.current_player = 0
-        self.board = scrabble.Board(dict_hash, num_players, seed)
+        self.board = scrablve.Board(dict_hash, num_players, seed)
         self.log = []
 
     def update_status(self, player_id):

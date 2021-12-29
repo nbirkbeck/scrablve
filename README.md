@@ -14,7 +14,7 @@ The moves are based on a prexisting dictionary:
 
 Run the CLI with:
 ```
-python3 scrabble.py words.txt words.2.txt words.3.txt [seed]
+python3 scrablve.py words.txt words.2.txt words.3.txt [seed]
 ```
 
 ## Web interface
